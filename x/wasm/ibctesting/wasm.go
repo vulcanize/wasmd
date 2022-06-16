@@ -8,16 +8,15 @@ import (
 	"io/ioutil"
 	"strings"
 
-	wasmd "github.com/CosmWasm/wasmd/app"
-
-	ibctesting "github.com/cosmos/ibc-go/v3/testing"
-
-	sdk "github.com/cosmos/cosmos-sdk/types"
 	"github.com/golang/protobuf/proto" //nolint
 	"github.com/stretchr/testify/require"
+
+	sdk "github.com/cosmos/cosmos-sdk/types"
+	ibctesting "github.com/cosmos/ibc-go/v3/testing"
 	abci "github.com/tendermint/tendermint/abci/types"
 	"github.com/tendermint/tendermint/libs/rand"
 
+	wasmd "github.com/CosmWasm/wasmd/app"
 	"github.com/CosmWasm/wasmd/x/wasm/types"
 )
 
@@ -59,12 +58,16 @@ func (chain *TestChain) StoreCode(byteCode []byte) types.MsgStoreCodeResponse {
 	r, err := chain.SendMsgs(storeMsg)
 	require.NoError(chain.t, err)
 	protoResult := chain.parseSDKResultData(r)
-	require.Len(chain.t, protoResult.Data, 1)
+	responses := protoResult.GetMsgResponses()
+	require.Len(chain.t, responses, 1)
 	// unmarshal protobuf response from data
-	var pInstResp types.MsgStoreCodeResponse
-	require.NoError(chain.t, pInstResp.Unmarshal(protoResult.Data[0].Data))
+	require.NoError(chain.t, chain.Codec.UnpackAny(responses[0], new(types.MsgTxResponse)))
+	msgval := responses[0].GetCachedValue()
+	pInstResp, ok := msgval.(*types.MsgStoreCodeResponse)
+	require.True(chain.t, ok, fmt.Errorf("tx response message has invalid type: %T", msgval))
+
 	require.NotEmpty(chain.t, pInstResp.CodeID)
-	return pInstResp
+	return *pInstResp
 }
 
 func (chain *TestChain) InstantiateContract(codeID uint64, initMsg []byte) sdk.AccAddress {
@@ -80,10 +83,13 @@ func (chain *TestChain) InstantiateContract(codeID uint64, initMsg []byte) sdk.A
 	r, err := chain.SendMsgs(instantiateMsg)
 	require.NoError(chain.t, err)
 	protoResult := chain.parseSDKResultData(r)
-	require.Len(chain.t, protoResult.Data, 1)
+	responses := protoResult.GetMsgResponses()
+	require.Len(chain.t, responses, 1)
+	require.NoError(chain.t, chain.Codec.UnpackAny(responses[0], new(types.MsgTxResponse)))
+	msgval := responses[0].GetCachedValue()
+	pExecResp, ok := msgval.(*types.MsgInstantiateContractResponse)
+	require.True(chain.t, ok, fmt.Errorf("tx response message has invalid type: %T", msgval))
 
-	var pExecResp types.MsgInstantiateContractResponse
-	require.NoError(chain.t, pExecResp.Unmarshal(protoResult.Data[0].Data))
 	a, err := sdk.AccAddressFromBech32(pExecResp.Address)
 	require.NoError(chain.t, err)
 	return a
@@ -129,7 +135,7 @@ func (chain *TestChain) SmartQuery(contractAddr string, queryMsg interface{}, re
 
 func (chain *TestChain) parseSDKResultData(r *sdk.Result) sdk.TxMsgData {
 	var protoResult sdk.TxMsgData
-	require.NoError(chain.t, proto.Unmarshal(r.Data, &protoResult))
+	require.NoError(chain.t, protoResult.Unmarshal(r.Data))
 	return protoResult
 }
 

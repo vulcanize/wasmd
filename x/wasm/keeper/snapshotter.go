@@ -22,10 +22,10 @@ const SnapshotFormat = 1
 
 type WasmSnapshotter struct {
 	wasm *Keeper
-	cms  sdk.MultiStore
+	cms  sdk.CommitMultiStore
 }
 
-func NewWasmSnapshotter(cms sdk.MultiStore, wasm *Keeper) *WasmSnapshotter {
+func NewWasmSnapshotter(cms sdk.CommitMultiStore, wasm *Keeper) *WasmSnapshotter {
 	return &WasmSnapshotter{
 		wasm: wasm,
 		cms:  cms,
@@ -46,7 +46,7 @@ func (ws *WasmSnapshotter) SupportedFormats() []uint32 {
 }
 
 func (ws *WasmSnapshotter) Snapshot(height uint64, protoWriter protoio.Writer) error {
-	cacheMS, err := ws.cms.CacheMultiStoreWithVersion(int64(height))
+	cacheMS, err := ws.cms.GetVersion(int64(height))
 	if err != nil {
 		return err
 	}

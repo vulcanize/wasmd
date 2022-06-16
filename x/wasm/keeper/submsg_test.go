@@ -27,7 +27,7 @@ func TestDispatchSubMsgSuccessCase(t *testing.T) {
 	contractStart := sdk.NewCoins(sdk.NewInt64Coin("denom", 40000))
 
 	creator := keepers.Faucet.NewFundedAccount(ctx, deposit...)
-	creatorBalance := deposit.Sub(contractStart)
+	creatorBalance := deposit.Sub(contractStart...)
 	_, _, fred := keyPubAddr()
 
 	// upload code
@@ -247,7 +247,7 @@ func TestDispatchSubMsgErrorHandling(t *testing.T) {
 		"send tokens": {
 			submsgID:         5,
 			msg:              validBankSend,
-			resultAssertions: []assertion{assertReturnedEvents(3), assertGasUsed(112000, 112900)},
+			resultAssertions: []assertion{assertReturnedEvents(3), assertGasUsed(117000, 118000)},
 		},
 		"not enough tokens": {
 			submsgID:    6,
@@ -267,7 +267,7 @@ func TestDispatchSubMsgErrorHandling(t *testing.T) {
 			msg:      validBankSend,
 			gasLimit: &subGasLimit,
 			// uses same gas as call without limit (note we do not charge the 40k on reply)
-			resultAssertions: []assertion{assertReturnedEvents(3), assertGasUsed(112000, 113000)},
+			resultAssertions: []assertion{assertReturnedEvents(3), assertGasUsed(117000, 118000)},
 		},
 		"not enough tokens with limit": {
 			submsgID:    16,

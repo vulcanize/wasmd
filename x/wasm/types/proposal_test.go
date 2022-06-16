@@ -7,7 +7,7 @@ import (
 	"testing"
 
 	sdk "github.com/cosmos/cosmos-sdk/types"
-	govtypes "github.com/cosmos/cosmos-sdk/x/gov/types"
+	govtypes "github.com/cosmos/cosmos-sdk/x/gov/types/v1beta1"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"gopkg.in/yaml.v2"
@@ -848,7 +848,7 @@ func TestProposalJsonSignBytes(t *testing.T) {
 			exp: `
 {
 	"type":"cosmos-sdk/MsgSubmitProposal",
-	"value":{"content":{"type":"wasm/InstantiateContractProposal","value":{"funds":[],"msg":{"foo":"bar"}}},"initial_deposit":[]}
+	"value":{"content":{"funds":[],"msg":{"foo":"bar"}},"initial_deposit":[]}
 }`,
 		},
 		"migrate contract": {
@@ -856,7 +856,7 @@ func TestProposalJsonSignBytes(t *testing.T) {
 			exp: `
 {
 	"type":"cosmos-sdk/MsgSubmitProposal",
-	"value":{"content":{"type":"wasm/MigrateContractProposal","value":{"msg":{"foo":"bar"}}},"initial_deposit":[]}
+	"value":{"content":{"msg":{"foo":"bar"}},"initial_deposit":[]}
 }`,
 		},
 	}
