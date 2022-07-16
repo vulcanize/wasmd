@@ -127,15 +127,20 @@ replace (
 	github.com/99designs/keyring => github.com/cosmos/keyring v1.1.7-0.20210622111912-ef00f8ac3d76
 
 	// Our cosmos-sdk branch is:  https://github.com/osmosis-labs/cosmos-sdk v0.45.0x-osmo-v7
-	github.com/cosmos/cosmos-sdk => github.com/osmosis-labs/cosmos-sdk v0.45.1-0.20220517190359-30ebc413ddff
+	// github.com/cosmos/cosmos-sdk => github.com/osmosis-labs/cosmos-sdk v0.45.1-0.20220517190359-30ebc413ddff
+	github.com/cosmos/cosmos-sdk => ../_mod/cosmos-sdk
+	github.com/cosmos/cosmos-sdk/db => ../_mod/cosmos-sdk/db
 	// Use Osmosis fast iavl
-	github.com/cosmos/iavl => github.com/osmosis-labs/iavl v0.17.3-osmo-v7
+	// github.com/cosmos/iavl => github.com/osmosis-labs/iavl v0.17.3-osmo-v7
+	github.com/cosmos/iavl => ../_mod/iavl
+	// ibc-go updated to deprecate REST routes
+	github.com/cosmos/ibc-go/v3 => ../_mod/ibc-go
+	github.com/cosmos/interchain-accounts => ../_mod/interchain-accounts-demo
 	// Fix upstream GHSA-h395-qcrw-5vmq vulnerability.
 	// TODO Remove it: https://github.com/cosmos/cosmos-sdk/issues/10409
 	github.com/gin-gonic/gin => github.com/gin-gonic/gin v1.7.0
 	// latest grpc doesn't work with with our modified proto compiler, so we need to enforce
 	// the following version across all dependencies.
 	github.com/gogo/protobuf => github.com/regen-network/protobuf v1.3.3-alpha.regen.1
-	google.golang.org/grpc => google.golang.org/grpc v1.33.2
-
+	// google.golang.org/grpc => google.golang.org/grpc v1.33.2
 )
