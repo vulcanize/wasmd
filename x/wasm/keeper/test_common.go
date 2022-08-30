@@ -8,10 +8,20 @@ import (
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/require"
+
+	"github.com/tendermint/tendermint/crypto"
+	"github.com/tendermint/tendermint/crypto/ed25519"
+	"github.com/tendermint/tendermint/libs/log"
+	"github.com/tendermint/tendermint/libs/rand"
+	tmproto "github.com/tendermint/tendermint/proto/tendermint/types"
+
 	"github.com/cosmos/cosmos-sdk/baseapp"
 	"github.com/cosmos/cosmos-sdk/codec"
+	dbm "github.com/cosmos/cosmos-sdk/db"
+	"github.com/cosmos/cosmos-sdk/db/memdb"
 	"github.com/cosmos/cosmos-sdk/std"
-	"github.com/cosmos/cosmos-sdk/store"
+	"github.com/cosmos/cosmos-sdk/store/v2alpha1/multi"
 	sdk "github.com/cosmos/cosmos-sdk/types"
 	sdkerrors "github.com/cosmos/cosmos-sdk/types/errors"
 	"github.com/cosmos/cosmos-sdk/types/module"
@@ -35,8 +45,11 @@ import (
 	evidencetypes "github.com/cosmos/cosmos-sdk/x/evidence/types"
 	"github.com/cosmos/cosmos-sdk/x/feegrant"
 	"github.com/cosmos/cosmos-sdk/x/gov"
+	govclient "github.com/cosmos/cosmos-sdk/x/gov/client"
 	govkeeper "github.com/cosmos/cosmos-sdk/x/gov/keeper"
 	govtypes "github.com/cosmos/cosmos-sdk/x/gov/types"
+	govv1 "github.com/cosmos/cosmos-sdk/x/gov/types/v1"
+	govv1beta1 "github.com/cosmos/cosmos-sdk/x/gov/types/v1beta1"
 	"github.com/cosmos/cosmos-sdk/x/mint"
 	minttypes "github.com/cosmos/cosmos-sdk/x/mint/types"
 	"github.com/cosmos/cosmos-sdk/x/params"
@@ -53,21 +66,13 @@ import (
 	upgradeclient "github.com/cosmos/cosmos-sdk/x/upgrade/client"
 	upgradekeeper "github.com/cosmos/cosmos-sdk/x/upgrade/keeper"
 	upgradetypes "github.com/cosmos/cosmos-sdk/x/upgrade/types"
-	"github.com/cosmos/ibc-go/v2/modules/apps/transfer"
-	ibctransfertypes "github.com/cosmos/ibc-go/v2/modules/apps/transfer/types"
-	ibc "github.com/cosmos/ibc-go/v2/modules/core"
-	ibchost "github.com/cosmos/ibc-go/v2/modules/core/24-host"
-	ibckeeper "github.com/cosmos/ibc-go/v2/modules/core/keeper"
-	"github.com/stretchr/testify/require"
-	"github.com/tendermint/tendermint/crypto"
-	"github.com/tendermint/tendermint/crypto/ed25519"
-	"github.com/tendermint/tendermint/libs/log"
-	"github.com/tendermint/tendermint/libs/rand"
-	tmproto "github.com/tendermint/tendermint/proto/tendermint/types"
-	dbm "github.com/tendermint/tm-db"
+	"github.com/cosmos/ibc-go/v3/modules/apps/transfer"
+	ibctransfertypes "github.com/cosmos/ibc-go/v3/modules/apps/transfer/types"
+	ibc "github.com/cosmos/ibc-go/v3/modules/core"
+	ibchost "github.com/cosmos/ibc-go/v3/modules/core/24-host"
+	ibckeeper "github.com/cosmos/ibc-go/v3/modules/core/keeper"
 
 	wasmappparams "github.com/CosmWasm/wasmd/app/params"
-
 	"github.com/CosmWasm/wasmd/x/wasm/keeper/wasmtesting"
 	"github.com/CosmWasm/wasmd/x/wasm/types"
 )
@@ -80,7 +85,7 @@ var ModuleBasics = module.NewBasicManager(
 	mint.AppModuleBasic{},
 	distribution.AppModuleBasic{},
 	gov.NewAppModuleBasic(
-		paramsclient.ProposalHandler, distrclient.ProposalHandler, upgradeclient.ProposalHandler,
+		[]govclient.ProposalHandler{paramsclient.ProposalHandler, distrclient.ProposalHandler, upgradeclient.LegacyProposalHandler},
 	),
 	params.AppModuleBasic{},
 	crisis.AppModuleBasic{},
@@ -112,12 +117,15 @@ func MakeEncodingConfig(_ testing.TB) wasmappparams.EncodingConfig {
 	return encodingConfig
 }
 
+var minComissionRate, _ = sdk.NewDecFromStr("0.001")
+
 var TestingStakeParams = stakingtypes.Params{
 	UnbondingTime:     100,
 	MaxValidators:     10,
 	MaxEntries:        10,
 	HistoricalEntries: 10,
 	BondDenom:         "stake",
+	MinCommissionRate: minComissionRate,
 }
 
 type TestFaucet struct {
@@ -157,7 +165,7 @@ func (f *TestFaucet) Fund(parentCtx sdk.Context, receiver sdk.AccAddress, amount
 	ctx := parentCtx.WithEventManager(sdk.NewEventManager()) // discard all faucet related events
 	err := f.bankKeeper.SendCoins(ctx, f.sender, receiver, amounts)
 	require.NoError(f.t, err)
-	f.balance = f.balance.Sub(amounts)
+	f.balance = f.balance.Sub(amounts...)
 }
 
 func (f *TestFaucet) NewFundedAccount(ctx sdk.Context, amounts ...sdk.Coin) sdk.AccAddress {
@@ -175,9 +183,10 @@ type TestKeepers struct {
 	ContractKeeper types.ContractOpsKeeper
 	WasmKeeper     *Keeper
 	IBCKeeper      *ibckeeper.Keeper
-	Router         *baseapp.Router
 	EncodingConfig wasmappparams.EncodingConfig
 	Faucet         *TestFaucet
+	MultiStore     sdk.CommitMultiStore
+	GovMsgSvr      govv1.MsgServer
 }
 
 // CreateDefaultTestInput common settings for CreateTestInput
@@ -188,7 +197,7 @@ func CreateDefaultTestInput(t testing.TB) (sdk.Context, TestKeepers) {
 // CreateTestInput encoders can be nil to accept the defaults, or set it to override some of the message handlers (like default)
 func CreateTestInput(t testing.TB, isCheckTx bool, supportedFeatures string, opts ...Option) (sdk.Context, TestKeepers) {
 	// Load default wasm config
-	return createTestInput(t, isCheckTx, supportedFeatures, types.DefaultWasmConfig(), dbm.NewMemDB(), opts...)
+	return createTestInput(t, isCheckTx, supportedFeatures, types.DefaultWasmConfig(), memdb.NewDB(), opts...)
 }
 
 // encoders can be nil to accept the defaults, or set it to override some of the message handlers (like default)
@@ -197,7 +206,7 @@ func createTestInput(
 	isCheckTx bool,
 	supportedFeatures string,
 	wasmConfig types.WasmConfig,
-	db dbm.DB,
+	db dbm.DBConnection,
 	opts ...Option,
 ) (sdk.Context, TestKeepers) {
 	tempDir := t.TempDir()
@@ -210,21 +219,15 @@ func createTestInput(
 		capabilitytypes.StoreKey, feegrant.StoreKey, authzkeeper.StoreKey,
 		types.StoreKey,
 	)
-	ms := store.NewCommitMultiStore(db)
-	for _, v := range keys {
-		ms.MountStoreWithDB(v, sdk.StoreTypeIAVL, db)
-	}
 	tkeys := sdk.NewTransientStoreKeys(paramstypes.TStoreKey)
-	for _, v := range tkeys {
-		ms.MountStoreWithDB(v, sdk.StoreTypeTransient, db)
-	}
-
 	memKeys := sdk.NewMemoryStoreKeys(capabilitytypes.MemStoreKey)
-	for _, v := range memKeys {
-		ms.MountStoreWithDB(v, sdk.StoreTypeMemory, db)
-	}
 
-	require.NoError(t, ms.LoadLatestVersion())
+	storeParams := multi.DefaultStoreParams()
+	require.NoError(t, multi.RegisterSubstoresFromMap(&storeParams, keys))
+	require.NoError(t, multi.RegisterSubstoresFromMap(&storeParams, tkeys))
+	require.NoError(t, multi.RegisterSubstoresFromMap(&storeParams, memKeys))
+	ms, err := multi.NewStore(db, storeParams)
+	require.NoError(t, err)
 
 	ctx := sdk.NewContext(ms, tmproto.Header{
 		Height: 1234567,
@@ -241,7 +244,8 @@ func createTestInput(
 		keys[paramstypes.StoreKey],
 		tkeys[paramstypes.TStoreKey],
 	)
-	for _, m := range []string{authtypes.ModuleName,
+	for _, m := range []string{
+		authtypes.ModuleName,
 		banktypes.ModuleName,
 		stakingtypes.ModuleName,
 		minttypes.ModuleName,
@@ -252,7 +256,8 @@ func createTestInput(
 		capabilitytypes.ModuleName,
 		ibchost.ModuleName,
 		govtypes.ModuleName,
-		types.ModuleName} {
+		types.ModuleName,
+	} {
 		paramsKeeper.Subspace(m)
 	}
 	subspace := func(m string) paramstypes.Subspace {
@@ -276,6 +281,7 @@ func createTestInput(
 		subspace(authtypes.ModuleName),
 		authtypes.ProtoBaseAccount, // prototype
 		maccPerms,
+		sdk.Bech32MainPrefix,
 	)
 	blockedAddrs := make(map[string]bool)
 	for acc := range maccPerms {
@@ -308,7 +314,6 @@ func createTestInput(
 		bankKeeper,
 		stakingKeeper,
 		authtypes.FeeCollectorName,
-		nil,
 	)
 	distKeeper.SetParams(ctx, distributiontypes.DefaultParams())
 	stakingKeeper.SetHooks(distKeeper.Hooks())
@@ -322,6 +327,7 @@ func createTestInput(
 		appCodec,
 		tempDir,
 		nil,
+		authtypes.NewModuleAddress(govtypes.ModuleName).String(),
 	)
 
 	faucet := NewTestFaucet(t, ctx, bankKeeper, minttypes.ModuleName, sdk.NewCoin("stake", sdk.NewInt(100_000_000_000)))
@@ -349,13 +355,14 @@ func createTestInput(
 		scopedIBCKeeper,
 	)
 
-	router := baseapp.NewRouter()
-	bh := bank.NewHandler(bankKeeper)
-	router.AddRoute(sdk.NewRoute(banktypes.RouterKey, bh))
-	sh := staking.NewHandler(stakingKeeper)
-	router.AddRoute(sdk.NewRoute(stakingtypes.RouterKey, sh))
-	dh := distribution.NewHandler(distKeeper)
-	router.AddRoute(sdk.NewRoute(distributiontypes.RouterKey, dh))
+	// TODO
+	// router := baseapp.NewRouter()
+	// bh := bank.NewHandler(bankKeeper)
+	// router.AddRoute(sdk.NewRoute(banktypes.RouterKey, bh))
+	// sh := staking.NewHandler(stakingKeeper)
+	// router.AddRoute(sdk.NewRoute(stakingtypes.RouterKey, sh))
+	// dh := distribution.NewHandler(distKeeper)
+	// router.AddRoute(sdk.NewRoute(distributiontypes.RouterKey, dh))
 
 	querier := baseapp.NewGRPCQueryRouter()
 	querier.SetInterfaceRegistry(encodingConfig.InterfaceRegistry)
@@ -385,9 +392,11 @@ func createTestInput(
 		opts...,
 	)
 	keeper.SetParams(ctx, types.DefaultParams())
-	// add wasm handler so we can loop-back (contracts calling contracts)
+
+	// // add wasm handler so we can loop-back (contracts calling contracts)
 	contractKeeper := NewDefaultPermissionKeeper(&keeper)
-	router.AddRoute(sdk.NewRoute(types.RouterKey, TestHandler(contractKeeper)))
+	// TODO
+	// router.AddRoute(sdk.NewRoute(types.RouterKey, TestHandler(contractKeeper)))
 
 	am := module.NewManager( // minimal module set that we use for message/ query tests
 		bank.NewAppModule(appCodec, bankKeeper, accountKeeper),
@@ -398,26 +407,29 @@ func createTestInput(
 	types.RegisterMsgServer(msgRouter, NewMsgServerImpl(NewDefaultPermissionKeeper(keeper)))
 	types.RegisterQueryServer(querier, NewGrpcQuerier(appCodec, keys[types.ModuleName], keeper, keeper.queryGasLimit))
 
-	govRouter := govtypes.NewRouter().
-		AddRoute(govtypes.RouterKey, govtypes.ProposalHandler).
+	govRouter := govv1beta1.NewRouter().
+		AddRoute(govtypes.RouterKey, govv1beta1.ProposalHandler).
 		AddRoute(paramproposal.RouterKey, params.NewParamChangeProposalHandler(paramsKeeper)).
 		AddRoute(distributiontypes.RouterKey, distribution.NewCommunityPoolSpendProposalHandler(distKeeper)).
 		AddRoute(types.RouterKey, NewWasmProposalHandler(&keeper, types.EnableAllProposals))
 
+	govParams := subspace(govtypes.ModuleName).WithKeyTable(govv1.ParamKeyTable())
 	govKeeper := govkeeper.NewKeeper(
 		appCodec,
 		keys[govtypes.StoreKey],
-		subspace(govtypes.ModuleName).WithKeyTable(govtypes.ParamKeyTable()),
+		govParams,
 		accountKeeper,
 		bankKeeper,
 		stakingKeeper,
 		govRouter,
+		msgRouter,
+		govtypes.DefaultConfig(),
 	)
 
-	govKeeper.SetProposalID(ctx, govtypes.DefaultStartingProposalID)
-	govKeeper.SetDepositParams(ctx, govtypes.DefaultDepositParams())
-	govKeeper.SetVotingParams(ctx, govtypes.DefaultVotingParams())
-	govKeeper.SetTallyParams(ctx, govtypes.DefaultTallyParams())
+	govKeeper.SetProposalID(ctx, govv1.DefaultStartingProposalID)
+	govKeeper.SetDepositParams(ctx, govv1.DefaultDepositParams())
+	govKeeper.SetVotingParams(ctx, govv1.DefaultVotingParams())
+	govKeeper.SetTallyParams(ctx, govv1.DefaultTallyParams())
 
 	keepers := TestKeepers{
 		AccountKeeper:  accountKeeper,
@@ -428,9 +440,10 @@ func createTestInput(
 		BankKeeper:     bankKeeper,
 		GovKeeper:      govKeeper,
 		IBCKeeper:      ibcKeeper,
-		Router:         router,
 		EncodingConfig: encodingConfig,
 		Faucet:         faucet,
+		MultiStore:     ms,
+		GovMsgSvr:      govkeeper.NewMsgServerImpl(govKeeper),
 	}
 	return ctx, keepers
 }
@@ -584,13 +597,22 @@ func SeedNewContractInstance(t testing.TB, ctx sdk.Context, keepers TestKeepers,
 
 // StoreRandomContract sets the mock wasmerEngine in keeper and calls store
 func StoreRandomContract(t testing.TB, ctx sdk.Context, keepers TestKeepers, mock types.WasmerEngine) ExampleContract {
+	return StoreRandomContractWithAccessConfig(t, ctx, keepers, mock, nil)
+}
+
+func StoreRandomContractWithAccessConfig(
+	t testing.TB, ctx sdk.Context,
+	keepers TestKeepers,
+	mock types.WasmerEngine,
+	cfg *types.AccessConfig,
+) ExampleContract {
 	t.Helper()
 	anyAmount := sdk.NewCoins(sdk.NewInt64Coin("denom", 1000))
 	creator, _, creatorAddr := keyPubAddr()
 	fundAccounts(t, ctx, keepers.AccountKeeper, keepers.BankKeeper, creatorAddr, anyAmount)
 	keepers.WasmKeeper.wasmVM = mock
 	wasmCode := append(wasmIdent, rand.Bytes(10)...) //nolint:gocritic
-	codeID, err := keepers.ContractKeeper.Create(ctx, creatorAddr, wasmCode, nil)
+	codeID, err := keepers.ContractKeeper.Create(ctx, creatorAddr, wasmCode, cfg)
 	require.NoError(t, err)
 	exampleContract := ExampleContract{InitialAmount: anyAmount, Creator: creator, CreatorAddr: creatorAddr, CodeID: codeID}
 	return exampleContract

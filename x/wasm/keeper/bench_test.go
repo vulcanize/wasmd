@@ -5,8 +5,9 @@ import (
 	"testing"
 
 	"github.com/cosmos/cosmos-sdk/crypto/keys/secp256k1"
+	dbm "github.com/cosmos/cosmos-sdk/db"
+	"github.com/cosmos/cosmos-sdk/db/memdb"
 	"github.com/stretchr/testify/require"
-	dbm "github.com/tendermint/tm-db"
 
 	"github.com/CosmWasm/wasmd/x/wasm/types"
 )
@@ -38,13 +39,13 @@ func BenchmarkGasNormalization(b *testing.B) {
 func BenchmarkInstantiationOverhead(b *testing.B) {
 	specs := map[string]struct {
 		pinned bool
-		db     func() dbm.DB
+		db     func() dbm.DBConnection
 	}{
 		"unpinned, memory db": {
-			db: func() dbm.DB { return dbm.NewMemDB() },
+			db: func() dbm.DBConnection { return memdb.NewDB() },
 		},
 		"pinned, memory db": {
-			db:     func() dbm.DB { return dbm.NewMemDB() },
+			db:     func() dbm.DBConnection { return memdb.NewDB() },
 			pinned: true,
 		},
 	}
@@ -85,7 +86,7 @@ func BenchmarkCompilation(b *testing.B) {
 	for name, spec := range specs {
 		b.Run(name, func(b *testing.B) {
 			wasmConfig := types.WasmConfig{MemoryCacheSize: 0}
-			db := dbm.NewMemDB()
+			db := memdb.NewDB()
 			ctx, keepers := createTestInput(b, false, SupportedFeatures, wasmConfig, db)
 
 			// print out code size for comparisons

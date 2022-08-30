@@ -26,6 +26,7 @@ compatibility list:
 
 | wasmd | wasmvm       | cosmwasm-vm | cosmwasm-std |
 | ----- | ------------ | ----------- | ------------ |
+| 0.27  | v1.0.0       |             | 1.0          |
 | 0.26  | 1.0.0-beta10 |             | 1.0          |
 | 0.25  | 1.0.0-beta10 |             | 1.0          |
 | 0.24  | 1.0.0-beta7  | 1.0.0-beta6 | 1.0          |
@@ -203,6 +204,7 @@ used by stateless `ValidateBasic()`. Thus, we made them public `var` and these c
 file of your custom chain.
 
 * `wasmtypes.MaxLabelSize = 64` to set the maximum label size on instantiation (default 128)
+* `wasmtypes.MaxWasmSize=777000` to set the max size of compiled wasm to be accepted (default 819200)
 
 ## Genesis Configuration
 We strongly suggest **to limit the max block gas in the genesis** and not use the default value (`-1` for infinite).

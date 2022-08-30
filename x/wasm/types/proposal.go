@@ -8,20 +8,22 @@ import (
 	sdk "github.com/cosmos/cosmos-sdk/types"
 	sdkerrors "github.com/cosmos/cosmos-sdk/types/errors"
 	govtypes "github.com/cosmos/cosmos-sdk/x/gov/types"
+	govv1beta1 "github.com/cosmos/cosmos-sdk/x/gov/types/v1beta1"
 )
 
 type ProposalType string
 
 const (
-	ProposalTypeStoreCode           ProposalType = "StoreCode"
-	ProposalTypeInstantiateContract ProposalType = "InstantiateContract"
-	ProposalTypeMigrateContract     ProposalType = "MigrateContract"
-	ProposalTypeSudoContract        ProposalType = "SudoContract"
-	ProposalTypeExecuteContract     ProposalType = "ExecuteContract"
-	ProposalTypeUpdateAdmin         ProposalType = "UpdateAdmin"
-	ProposalTypeClearAdmin          ProposalType = "ClearAdmin"
-	ProposalTypePinCodes            ProposalType = "PinCodes"
-	ProposalTypeUnpinCodes          ProposalType = "UnpinCodes"
+	ProposalTypeStoreCode               ProposalType = "StoreCode"
+	ProposalTypeInstantiateContract     ProposalType = "InstantiateContract"
+	ProposalTypeMigrateContract         ProposalType = "MigrateContract"
+	ProposalTypeSudoContract            ProposalType = "SudoContract"
+	ProposalTypeExecuteContract         ProposalType = "ExecuteContract"
+	ProposalTypeUpdateAdmin             ProposalType = "UpdateAdmin"
+	ProposalTypeClearAdmin              ProposalType = "ClearAdmin"
+	ProposalTypePinCodes                ProposalType = "PinCodes"
+	ProposalTypeUnpinCodes              ProposalType = "UnpinCodes"
+	ProposalTypeUpdateInstantiateConfig ProposalType = "UpdateInstantiateConfig"
 )
 
 // DisableAllProposals contains no wasm gov types.
@@ -38,6 +40,7 @@ var EnableAllProposals = []ProposalType{
 	ProposalTypeClearAdmin,
 	ProposalTypePinCodes,
 	ProposalTypeUnpinCodes,
+	ProposalTypeUpdateInstantiateConfig,
 }
 
 // ConvertToProposals maps each key to a ProposalType and returns a typed list.
@@ -59,24 +62,16 @@ func ConvertToProposals(keys []string) ([]ProposalType, error) {
 }
 
 func init() { // register new content types with the sdk
-	govtypes.RegisterProposalType(string(ProposalTypeStoreCode))
-	govtypes.RegisterProposalType(string(ProposalTypeInstantiateContract))
-	govtypes.RegisterProposalType(string(ProposalTypeMigrateContract))
-	govtypes.RegisterProposalType(string(ProposalTypeSudoContract))
-	govtypes.RegisterProposalType(string(ProposalTypeExecuteContract))
-	govtypes.RegisterProposalType(string(ProposalTypeUpdateAdmin))
-	govtypes.RegisterProposalType(string(ProposalTypeClearAdmin))
-	govtypes.RegisterProposalType(string(ProposalTypePinCodes))
-	govtypes.RegisterProposalType(string(ProposalTypeUnpinCodes))
-	govtypes.RegisterProposalTypeCodec(&StoreCodeProposal{}, "wasm/StoreCodeProposal")
-	govtypes.RegisterProposalTypeCodec(&InstantiateContractProposal{}, "wasm/InstantiateContractProposal")
-	govtypes.RegisterProposalTypeCodec(&MigrateContractProposal{}, "wasm/MigrateContractProposal")
-	govtypes.RegisterProposalTypeCodec(&SudoContractProposal{}, "wasm/SudoContractProposal")
-	govtypes.RegisterProposalTypeCodec(&ExecuteContractProposal{}, "wasm/ExecuteContractProposal")
-	govtypes.RegisterProposalTypeCodec(&UpdateAdminProposal{}, "wasm/UpdateAdminProposal")
-	govtypes.RegisterProposalTypeCodec(&ClearAdminProposal{}, "wasm/ClearAdminProposal")
-	govtypes.RegisterProposalTypeCodec(&PinCodesProposal{}, "wasm/PinCodesProposal")
-	govtypes.RegisterProposalTypeCodec(&UnpinCodesProposal{}, "wasm/UnpinCodesProposal")
+	govv1beta1.RegisterProposalType(string(ProposalTypeStoreCode))
+	govv1beta1.RegisterProposalType(string(ProposalTypeInstantiateContract))
+	govv1beta1.RegisterProposalType(string(ProposalTypeMigrateContract))
+	govv1beta1.RegisterProposalType(string(ProposalTypeSudoContract))
+	govv1beta1.RegisterProposalType(string(ProposalTypeExecuteContract))
+	govv1beta1.RegisterProposalType(string(ProposalTypeUpdateAdmin))
+	govv1beta1.RegisterProposalType(string(ProposalTypeClearAdmin))
+	govv1beta1.RegisterProposalType(string(ProposalTypePinCodes))
+	govv1beta1.RegisterProposalType(string(ProposalTypeUnpinCodes))
+	govv1beta1.RegisterProposalType(string(ProposalTypeUpdateInstantiateConfig))
 }
 
 // ProposalRoute returns the routing key of a parameter change proposal.
@@ -110,6 +105,14 @@ func (p StoreCodeProposal) ValidateBasic() error {
 		}
 	}
 	return nil
+}
+
+func (p StoreCodeProposal) GetSigners() []sdk.AccAddress {
+	addr, err := sdk.AccAddressFromBech32(p.RunAs)
+	if err != nil { // should never happen as validate basic rejects invalid addresses
+		panic(err.Error())
+	}
+	return []sdk.AccAddress{addr}
 }
 
 // String implements the Stringer interface.
@@ -185,6 +188,14 @@ func (p InstantiateContractProposal) ValidateBasic() error {
 	return nil
 }
 
+func (p InstantiateContractProposal) GetSigners() []sdk.AccAddress {
+	addr, err := sdk.AccAddressFromBech32(p.RunAs)
+	if err != nil { // should never happen as validate basic rejects invalid addresses
+		panic(err.Error())
+	}
+	return []sdk.AccAddress{addr}
+}
+
 // String implements the Stringer interface.
 func (p InstantiateContractProposal) String() string {
 	return fmt.Sprintf(`Instantiate Code Proposal:
@@ -248,6 +259,10 @@ func (p MigrateContractProposal) ValidateBasic() error {
 	if err := p.Msg.ValidateBasic(); err != nil {
 		return sdkerrors.Wrap(err, "payload msg")
 	}
+	return nil
+}
+
+func (p MigrateContractProposal) GetSigners() []sdk.AccAddress {
 	return nil
 }
 
@@ -315,6 +330,10 @@ func (p SudoContractProposal) String() string {
 `, p.Title, p.Description, p.Contract, p.Msg)
 }
 
+func (p SudoContractProposal) GetSigners() []sdk.AccAddress {
+	return nil
+}
+
 // MarshalYAML pretty prints the migrate message
 func (p SudoContractProposal) MarshalYAML() (interface{}, error) {
 	return struct {
@@ -360,6 +379,14 @@ func (p ExecuteContractProposal) ValidateBasic() error {
 		return sdkerrors.Wrap(err, "payload msg")
 	}
 	return nil
+}
+
+func (p ExecuteContractProposal) GetSigners() []sdk.AccAddress {
+	addr, err := sdk.AccAddressFromBech32(p.RunAs)
+	if err != nil { // should never happen as validate basic rejects invalid addresses
+		panic(err.Error())
+	}
+	return []sdk.AccAddress{addr}
 }
 
 // String implements the Stringer interface.
@@ -419,6 +446,14 @@ func (p UpdateAdminProposal) ValidateBasic() error {
 	return nil
 }
 
+func (p UpdateAdminProposal) GetSigners() []sdk.AccAddress {
+	addr, err := sdk.AccAddressFromBech32(p.NewAdmin)
+	if err != nil { // should never happen as validate basic rejects invalid addresses
+		panic(err.Error())
+	}
+	return []sdk.AccAddress{addr}
+}
+
 // String implements the Stringer interface.
 func (p UpdateAdminProposal) String() string {
 	return fmt.Sprintf(`Update Contract Admin Proposal:
@@ -449,6 +484,10 @@ func (p ClearAdminProposal) ValidateBasic() error {
 	if _, err := sdk.AccAddressFromBech32(p.Contract); err != nil {
 		return sdkerrors.Wrap(err, "contract")
 	}
+	return nil
+}
+
+func (p ClearAdminProposal) GetSigners() []sdk.AccAddress {
 	return nil
 }
 
@@ -484,6 +523,10 @@ func (p PinCodesProposal) ValidateBasic() error {
 	return nil
 }
 
+func (p PinCodesProposal) GetSigners() []sdk.AccAddress {
+	return nil
+}
+
 // String implements the Stringer interface.
 func (p PinCodesProposal) String() string {
 	return fmt.Sprintf(`Pin Wasm Codes Proposal:
@@ -516,6 +559,10 @@ func (p UnpinCodesProposal) ValidateBasic() error {
 	return nil
 }
 
+func (p UnpinCodesProposal) GetSigners() []sdk.AccAddress {
+	return nil
+}
+
 // String implements the Stringer interface.
 func (p UnpinCodesProposal) String() string {
 	return fmt.Sprintf(`Unpin Wasm Codes Proposal:
@@ -532,8 +579,8 @@ func validateProposalCommons(title, description string) error {
 	if len(title) == 0 {
 		return sdkerrors.Wrap(govtypes.ErrInvalidProposalContent, "proposal title cannot be blank")
 	}
-	if len(title) > govtypes.MaxTitleLength {
-		return sdkerrors.Wrapf(govtypes.ErrInvalidProposalContent, "proposal title is longer than max length of %d", govtypes.MaxTitleLength)
+	if len(title) > govv1beta1.MaxTitleLength {
+		return sdkerrors.Wrapf(govtypes.ErrInvalidProposalContent, "proposal title is longer than max length of %d", govv1beta1.MaxTitleLength)
 	}
 	if strings.TrimSpace(description) != description {
 		return sdkerrors.Wrap(govtypes.ErrInvalidProposalContent, "proposal description must not start/end with white spaces")
@@ -541,8 +588,65 @@ func validateProposalCommons(title, description string) error {
 	if len(description) == 0 {
 		return sdkerrors.Wrap(govtypes.ErrInvalidProposalContent, "proposal description cannot be blank")
 	}
-	if len(description) > govtypes.MaxDescriptionLength {
-		return sdkerrors.Wrapf(govtypes.ErrInvalidProposalContent, "proposal description is longer than max length of %d", govtypes.MaxDescriptionLength)
+	if len(description) > govv1beta1.MaxDescriptionLength {
+		return sdkerrors.Wrapf(govtypes.ErrInvalidProposalContent, "proposal description is longer than max length of %d", govv1beta1.MaxDescriptionLength)
 	}
 	return nil
+}
+
+// ProposalRoute returns the routing key of a parameter change proposal.
+func (p UpdateInstantiateConfigProposal) ProposalRoute() string { return RouterKey }
+
+// GetTitle returns the title of the proposal
+func (p *UpdateInstantiateConfigProposal) GetTitle() string { return p.Title }
+
+// GetDescription returns the human readable description of the proposal
+func (p UpdateInstantiateConfigProposal) GetDescription() string { return p.Description }
+
+// ProposalType returns the type
+func (p UpdateInstantiateConfigProposal) ProposalType() string {
+	return string(ProposalTypeUpdateInstantiateConfig)
+}
+
+// ValidateBasic validates the proposal
+func (p UpdateInstantiateConfigProposal) ValidateBasic() error {
+	if err := validateProposalCommons(p.Title, p.Description); err != nil {
+		return err
+	}
+	if len(p.AccessConfigUpdates) == 0 {
+		return sdkerrors.Wrap(ErrEmpty, "code updates")
+	}
+	dedup := make(map[uint64]bool)
+	for _, codeUpdate := range p.AccessConfigUpdates {
+		_, found := dedup[codeUpdate.CodeID]
+		if found {
+			return sdkerrors.Wrapf(ErrDuplicate, "duplicate code: %d", codeUpdate.CodeID)
+		}
+		if err := codeUpdate.InstantiatePermission.ValidateBasic(); err != nil {
+			return sdkerrors.Wrap(err, "instantiate permission")
+		}
+		dedup[codeUpdate.CodeID] = true
+	}
+	return nil
+}
+
+func (p UpdateInstantiateConfigProposal) GetSigners() []sdk.AccAddress {
+	return nil
+}
+
+// String implements the Stringer interface.
+func (p UpdateInstantiateConfigProposal) String() string {
+	return fmt.Sprintf(`Update Instantiate Config Proposal:
+  Title:       %s
+  Description: %s
+  AccessConfigUpdates: %v
+`, p.Title, p.Description, p.AccessConfigUpdates)
+}
+
+// String implements the Stringer interface.
+func (c AccessConfigUpdate) String() string {
+	return fmt.Sprintf(`AccessConfigUpdate:
+  CodeID:       %d
+  AccessConfig: %v
+`, c.CodeID, c.InstantiatePermission)
 }

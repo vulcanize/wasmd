@@ -6,13 +6,13 @@ import (
 	"time"
 
 	"github.com/stretchr/testify/require"
-	"github.com/syndtr/goleveldb/leveldb/opt"
 
 	abci "github.com/tendermint/tendermint/abci/types"
 	tmproto "github.com/tendermint/tendermint/proto/tendermint/types"
-	dbm "github.com/tendermint/tm-db"
 
 	"github.com/cosmos/cosmos-sdk/crypto/keys/secp256k1"
+	dbm "github.com/cosmos/cosmos-sdk/db"
+	"github.com/cosmos/cosmos-sdk/db/memdb"
 	sdk "github.com/cosmos/cosmos-sdk/types"
 	banktypes "github.com/cosmos/cosmos-sdk/x/bank/types"
 
@@ -21,7 +21,7 @@ import (
 
 func BenchmarkTxSending(b *testing.B) {
 	cases := map[string]struct {
-		db          func(*testing.B) dbm.DB
+		db          func(*testing.B) dbm.DBConnection
 		txBuilder   func(*testing.B, *AppInfo) []sdk.Tx
 		blockSize   int
 		numAccounts int
@@ -39,49 +39,49 @@ func BenchmarkTxSending(b *testing.B) {
 			numAccounts: 50,
 		},
 		"basic send - leveldb": {
-			db:          buildLevelDB,
+			db:          buildBadgerDB,
 			blockSize:   20,
 			txBuilder:   buildTxFromMsg(bankSendMsg),
 			numAccounts: 50,
 		},
 		"cw20 transfer - leveldb": {
-			db:          buildLevelDB,
+			db:          buildBadgerDB,
 			blockSize:   20,
 			txBuilder:   buildTxFromMsg(cw20TransferMsg),
 			numAccounts: 50,
 		},
 		"basic send - leveldb - 8k accounts": {
-			db:          buildLevelDB,
+			db:          buildBadgerDB,
 			blockSize:   20,
 			txBuilder:   buildTxFromMsg(bankSendMsg),
 			numAccounts: 8000,
 		},
 		"cw20 transfer - leveldb - 8k accounts": {
-			db:          buildLevelDB,
+			db:          buildBadgerDB,
 			blockSize:   20,
 			txBuilder:   buildTxFromMsg(cw20TransferMsg),
 			numAccounts: 8000,
 		},
 		"basic send - leveldb - 8k accounts - huge blocks": {
-			db:          buildLevelDB,
+			db:          buildBadgerDB,
 			blockSize:   1000,
 			txBuilder:   buildTxFromMsg(bankSendMsg),
 			numAccounts: 8000,
 		},
 		"cw20 transfer - leveldb - 8k accounts - huge blocks": {
-			db:          buildLevelDB,
+			db:          buildBadgerDB,
 			blockSize:   1000,
 			txBuilder:   buildTxFromMsg(cw20TransferMsg),
 			numAccounts: 8000,
 		},
 		"basic send - leveldb - 80k accounts": {
-			db:          buildLevelDB,
+			db:          buildBadgerDB,
 			blockSize:   20,
 			txBuilder:   buildTxFromMsg(bankSendMsg),
 			numAccounts: 80000,
 		},
 		"cw20 transfer - leveldb - 80k accounts": {
-			db:          buildLevelDB,
+			db:          buildBadgerDB,
 			blockSize:   20,
 			txBuilder:   buildTxFromMsg(cw20TransferMsg),
 			numAccounts: 80000,
@@ -108,11 +108,11 @@ func BenchmarkTxSending(b *testing.B) {
 				for j := 0; j < blockSize; j++ {
 					idx := i*blockSize + j
 
-					_, _, err := appInfo.App.Check(txEncoder, txs[idx])
+					_, _, err := appInfo.App.SimCheck(txEncoder, txs[idx])
 					if err != nil {
 						panic("something is broken in checking transaction")
 					}
-					_, _, err = appInfo.App.Deliver(txEncoder, txs[idx])
+					_, _, err = appInfo.App.SimDeliver(txEncoder, txs[idx])
 					require.NoError(b, err)
 				}
 
@@ -157,12 +157,12 @@ func buildTxFromMsg(builder func(info *AppInfo) ([]sdk.Msg, error)) func(b *test
 	}
 }
 
-func buildMemDB(b *testing.B) dbm.DB {
-	return dbm.NewMemDB()
+func buildMemDB(b *testing.B) dbm.DBConnection {
+	return memdb.NewDB()
 }
 
-func buildLevelDB(b *testing.B) dbm.DB {
-	levelDB, err := dbm.NewGoLevelDBWithOpts("testing", b.TempDir(), &opt.Options{BlockCacher: opt.NoCacher})
+func buildBadgerDB(b *testing.B) dbm.DBConnection {
+	db, err := dbm.NewDB("testing", dbm.BadgerDBBackend, b.TempDir())
 	require.NoError(b, err)
-	return levelDB
+	return db
 }

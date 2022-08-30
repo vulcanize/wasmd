@@ -71,6 +71,7 @@ func GenesisStoreCodeCmd(defaultNodeHome string, genesisMutator GenesisMutator) 
 	}
 	cmd.Flags().String(flagRunAs, "", "The address that is stored as code creator")
 	cmd.Flags().String(flagInstantiateByEverybody, "", "Everybody can instantiate a contract from the code, optional")
+	cmd.Flags().String(flagInstantiateNobody, "", "Nobody except the governance process can instantiate a contract from the code, optional")
 	cmd.Flags().String(flagInstantiateByAddress, "", "Only this address can instantiate a contract instance from the code, optional")
 
 	cmd.Flags().String(flags.FlagHome, defaultNodeHome, "The application home directory")
@@ -214,7 +215,6 @@ func GenesisListCodesCmd(defaultNodeHome string, genReader GenesisReader) *cobra
 				return err
 			}
 			return printJSONOutput(cmd, all)
-
 		},
 	}
 	cmd.Flags().String(flags.FlagHome, defaultNodeHome, "The application home directory")
@@ -404,8 +404,10 @@ func (d DefaultGenesisReader) ReadWasmGenesis(cmd *cobra.Command) (*GenesisData,
 	), nil
 }
 
-var _ GenesisReader = DefaultGenesisIO{}
-var _ GenesisMutator = DefaultGenesisIO{}
+var (
+	_ GenesisReader  = DefaultGenesisIO{}
+	_ GenesisMutator = DefaultGenesisIO{}
+)
 
 // DefaultGenesisIO implements both interfaces to read and modify the genesis state for this module.
 // This implementation uses the default data structure that is used by the module.go genesis import/ export.
@@ -498,9 +500,9 @@ func getActorAddress(cmd *cobra.Command) (sdk.AccAddress, error) {
 		return nil, err
 	}
 
-	homeDir := client.GetClientContextFromCmd(cmd).HomeDir
+	clientCtx := client.GetClientContextFromCmd(cmd)
 	// attempt to lookup address from Keybase if no address was provided
-	kb, err := keyring.New(sdk.KeyringServiceName(), keyringBackend, homeDir, inBuf)
+	kb, err := keyring.New(sdk.KeyringServiceName(), keyringBackend, clientCtx.HomeDir, inBuf, clientCtx.Codec)
 	if err != nil {
 		return nil, err
 	}
@@ -509,5 +511,5 @@ func getActorAddress(cmd *cobra.Command) (sdk.AccAddress, error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed to get address from Keybase: %w", err)
 	}
-	return info.GetAddress(), nil
+	return info.GetAddress()
 }

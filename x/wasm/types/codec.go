@@ -6,8 +6,10 @@ import (
 	cryptocodec "github.com/cosmos/cosmos-sdk/crypto/codec"
 	sdk "github.com/cosmos/cosmos-sdk/types"
 	"github.com/cosmos/cosmos-sdk/types/msgservice"
-	govtypes "github.com/cosmos/cosmos-sdk/x/gov/types"
+	govtypes "github.com/cosmos/cosmos-sdk/x/gov/types/v1beta1"
 )
+
+type MsgTxResponse interface{}
 
 // RegisterLegacyAminoCodec registers the account types and interface
 func RegisterLegacyAminoCodec(cdc *codec.LegacyAmino) { //nolint:staticcheck
@@ -27,6 +29,7 @@ func RegisterLegacyAminoCodec(cdc *codec.LegacyAmino) { //nolint:staticcheck
 	cdc.RegisterConcrete(&ExecuteContractProposal{}, "wasm/ExecuteContractProposal", nil)
 	cdc.RegisterConcrete(&UpdateAdminProposal{}, "wasm/UpdateAdminProposal", nil)
 	cdc.RegisterConcrete(&ClearAdminProposal{}, "wasm/ClearAdminProposal", nil)
+	cdc.RegisterConcrete(&UpdateInstantiateConfigProposal{}, "wasm/UpdateInstantiateConfigProposal", nil)
 }
 
 func RegisterInterfaces(registry types.InterfaceRegistry) {
@@ -52,6 +55,19 @@ func RegisterInterfaces(registry types.InterfaceRegistry) {
 		&ClearAdminProposal{},
 		&PinCodesProposal{},
 		&UnpinCodesProposal{},
+		&UpdateInstantiateConfigProposal{},
+	)
+	registry.RegisterInterface(
+		"MsgTxResponse",
+		(*MsgTxResponse)(nil),
+		&MsgStoreCodeResponse{},
+		&MsgInstantiateContractResponse{},
+		&MsgExecuteContractResponse{},
+		&MsgMigrateContractResponse{},
+		&MsgUpdateAdminResponse{},
+		&MsgClearAdminResponse{},
+		// &MsgIBCCloseChannelResponse{},
+		// &MsgIBCSendResponse{},
 	)
 
 	registry.RegisterInterface("ContractInfoExtension", (*ContractInfoExtension)(nil))

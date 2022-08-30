@@ -5,7 +5,7 @@ import (
 
 	sdk "github.com/cosmos/cosmos-sdk/types"
 	sdkerrors "github.com/cosmos/cosmos-sdk/types/errors"
-	govtypes "github.com/cosmos/cosmos-sdk/x/gov/types"
+	govtypes "github.com/cosmos/cosmos-sdk/x/gov/types/v1beta1"
 
 	"github.com/CosmWasm/wasmd/x/wasm/types"
 )
@@ -47,6 +47,8 @@ func NewWasmProposalHandlerX(k types.ContractOpsKeeper, enabledProposalTypes []t
 			return handlePinCodesProposal(ctx, k, *c)
 		case *types.UnpinCodesProposal:
 			return handleUnpinCodesProposal(ctx, k, *c)
+		case *types.UpdateInstantiateConfigProposal:
+			return handleUpdateInstantiateConfigProposal(ctx, k, *c)
 		default:
 			return sdkerrors.Wrapf(sdkerrors.ErrUnknownRequest, "unrecognized wasm proposal content type: %T", c)
 		}
@@ -77,9 +79,11 @@ func handleInstantiateProposal(ctx sdk.Context, k types.ContractOpsKeeper, p typ
 	if err != nil {
 		return sdkerrors.Wrap(err, "run as address")
 	}
-	adminAddr, err := sdk.AccAddressFromBech32(p.Admin)
-	if err != nil {
-		return sdkerrors.Wrap(err, "admin")
+	var adminAddr sdk.AccAddress
+	if p.Admin != "" {
+		if adminAddr, err = sdk.AccAddressFromBech32(p.Admin); err != nil {
+			return sdkerrors.Wrap(err, "admin")
+		}
 	}
 
 	_, data, err := k.Instantiate(ctx, p.CodeID, runAsAddr, adminAddr, p.Msg, p.Label, p.Funds)
@@ -215,6 +219,19 @@ func handleUnpinCodesProposal(ctx sdk.Context, k types.ContractOpsKeeper, p type
 	for _, v := range p.CodeIDs {
 		if err := k.UnpinCode(ctx, v); err != nil {
 			return sdkerrors.Wrapf(err, "code id: %d", v)
+		}
+	}
+	return nil
+}
+
+func handleUpdateInstantiateConfigProposal(ctx sdk.Context, k types.ContractOpsKeeper, p types.UpdateInstantiateConfigProposal) error {
+	if err := p.ValidateBasic(); err != nil {
+		return err
+	}
+
+	for _, accessConfigUpdate := range p.AccessConfigUpdates {
+		if err := k.SetAccessConfig(ctx, accessConfigUpdate.CodeID, accessConfigUpdate.InstantiatePermission); err != nil {
+			return sdkerrors.Wrapf(err, "code id: %d", accessConfigUpdate.CodeID)
 		}
 	}
 	return nil
